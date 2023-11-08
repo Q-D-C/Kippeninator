@@ -104,9 +104,29 @@ public:
 
     ValueChanger(Menu &menuObject) : menu(menuObject)
     {
+        std::ifstream inFile("Temperature.txt");
+        if (inFile.is_open())
+        {
+            inFile >> TemperatureValue;
+            inFile.close();
+            std::cout << "Temperature value read from the file: " << TemperatureValue << std::endl;
+        }
+        std::ifstream inFile1("Humidity.txt");
+        if (inFile1.is_open())
+        {
+            inFile1 >> HumidityValue;
+            inFile1.close();
+            std::cout << "Humidity value read from the file: " << HumidityValue << std::endl;
+        }
+        std::ifstream inFile2("Days.txt");
+        if (inFile2.is_open())
+        {
+            inFile2 >> Daycounter;
+            inFile2.close();
+            std::cout << "Day value read from the file: " << Daycounter << std::endl;
+        }
         std::cout << "Press the second button to increse value!" << std::endl;
         std::cout << "Press the third button to decrese value!" << std::endl;
-
     }
 
     void checkValue()
@@ -119,12 +139,28 @@ public:
                 TemperatureValue = TemperatureValue + 0.1;
                 std::cout << "Temperature = " << TemperatureValue << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
+                // Store the value in File
+                std::ofstream outFile("Temperature.txt");
+                if (outFile.is_open())
+                {
+                    outFile << TemperatureValue;
+                    outFile.close();
+                    std::cout << "Value has been stored in the file." << std::endl;
+                }
             }
             else if (buttonDown.isButtonPressed())
             {
                 TemperatureValue = TemperatureValue - 0.1;
                 std::cout << "Temperature = " << TemperatureValue << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
+                // Store the value in File
+                std::ofstream outFile("Temperature.txt");
+                if (outFile.is_open())
+                {
+                    outFile << TemperatureValue;
+                    outFile.close();
+                    std::cout << "Value has been stored in the file." << std::endl;
+                }
             }
             break;
         case 1:
@@ -133,12 +169,28 @@ public:
                 HumidityValue = HumidityValue + 0.1;
                 std::cout << "Humidity = " << HumidityValue << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
+                                // Store the value in File
+                std::ofstream outFile("Humidity.txt");
+                if (outFile.is_open())
+                {
+                    outFile << HumidityValue;
+                    outFile.close();
+                    std::cout << "Value has been stored in the file." << std::endl;
+                }
             }
             else if (buttonDown.isButtonPressed())
             {
                 HumidityValue = HumidityValue - 0.1;
                 std::cout << "Humidity = " << HumidityValue << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
+                                // Store the value in File
+                std::ofstream outFile("Humidity.txt");
+                if (outFile.is_open())
+                {
+                    outFile << HumidityValue;
+                    outFile.close();
+                    std::cout << "Value has been stored in the file." << std::endl;
+                }
             }
             break;
         case 2:
@@ -147,12 +199,28 @@ public:
                 Daycounter++;
                 std::cout << "Days left: " << Daycounter << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
+                                // Store the value in File
+                std::ofstream outFile("Days.txt");
+                if (outFile.is_open())
+                {
+                    outFile << Daycounter;
+                    outFile.close();
+                    std::cout << "Value has been stored in the file." << std::endl;
+                }
             }
             else if (buttonDown.isButtonPressed())
             {
                 Daycounter--;
                 std::cout << "Days left: " << Daycounter << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
+                                // Store the value in File
+                std::ofstream outFile("Days.txt");
+                if (outFile.is_open())
+                {
+                    outFile << Daycounter;
+                    outFile.close();
+                    std::cout << "Value has been stored in the file." << std::endl;
+                }
             }
             break;
         }
@@ -198,7 +266,7 @@ int main()
         value.checkValue();
         menu.checkMenu();
         fan.checkFan();
-        
+
         usleep(10000); // Delay to reduce CPU usage
     }
 
