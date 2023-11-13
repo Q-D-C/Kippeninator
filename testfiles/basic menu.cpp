@@ -129,6 +129,32 @@ public:
         std::cout << "Press the third button to decrese value!" << std::endl;
     }
 
+    // ~ValueChanger()
+    // {
+    //     // Store the value in File
+    //     std::ofstream outFile("Temperature.txt");
+    //     if (outFile.is_open())
+    //     {
+    //         outFile << TemperatureValue;
+    //         outFile.close();
+    //         std::cout << "Value has been stored in the file." << std::endl;
+    //     }
+    //     std::ofstream outFile("Humidity.txt");
+    //     if (outFile.is_open())
+    //     {
+    //         outFile << HumidityValue;
+    //         outFile.close();
+    //         std::cout << "Value has been stored in the file." << std::endl;
+    //     }
+    //     std::ofstream outFile("Days.txt");
+    //     if (outFile.is_open())
+    //     {
+    //         outFile << Daycounter;
+    //         outFile.close();
+    //         std::cout << "Value has been stored in the file." << std::endl;
+    //     }
+    // }
+
     void checkValue()
     {
         switch (menu.Menustate)
@@ -170,11 +196,11 @@ public:
                 std::cout << "Humidity = " << HumidityValue << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
                                 // Store the value in File
-                std::ofstream outFile("Humidity.txt");
-                if (outFile.is_open())
+                std::ofstream outFile1("Humidity.txt");
+                if (outFile1.is_open())
                 {
-                    outFile << HumidityValue;
-                    outFile.close();
+                    outFile1 << HumidityValue;
+                    outFile1.close();
                     std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
@@ -184,11 +210,11 @@ public:
                 std::cout << "Humidity = " << HumidityValue << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
                                 // Store the value in File
-                std::ofstream outFile("Humidity.txt");
-                if (outFile.is_open())
+                std::ofstream outFile1("Humidity.txt");
+                if (outFile1.is_open())
                 {
-                    outFile << HumidityValue;
-                    outFile.close();
+                    outFile1 << HumidityValue;
+                    outFile1.close();
                     std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
@@ -200,11 +226,11 @@ public:
                 std::cout << "Days left: " << Daycounter << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
                                 // Store the value in File
-                std::ofstream outFile("Days.txt");
-                if (outFile.is_open())
+                std::ofstream outFile2("Days.txt");
+                if (outFile2.is_open())
                 {
-                    outFile << Daycounter;
-                    outFile.close();
+                    outFile2 << Daycounter;
+                    outFile2.close();
                     std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
@@ -214,11 +240,11 @@ public:
                 std::cout << "Days left: " << Daycounter << std::endl;
                 usleep(200000); // Add a small delay (200ms) for debouncing
                                 // Store the value in File
-                std::ofstream outFile("Days.txt");
-                if (outFile.is_open())
+                std::ofstream outFile2("Days.txt");
+                if (outFile2.is_open())
                 {
-                    outFile << Daycounter;
-                    outFile.close();
+                    outFile2 << Daycounter;
+                    outFile2.close();
                     std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
