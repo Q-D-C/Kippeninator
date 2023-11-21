@@ -1,4 +1,4 @@
-///usr/bin/g++ -g database_integration.cpp -o database_integration -lmysqlcppconn
+/// usr/bin/g++ -g database_integration.cpp -o database_integration -lmysqlcppconn
 
 #include <iostream>
 #include <stdio.h>
@@ -12,40 +12,60 @@
 #include <mysql_connection.h>
 #include <cppconn/statement.h>
 
-class SI7021Sensor {
+//define the amount of time between readings
+#define sleeptime 1
+
+// MySQL database connection settings
+const std::string host = "127.0.0.1";
+const std::string user = "kippenbroeder";
+const std::string password = "kippenbroederinator";
+const std::string database = "sensor_data";
+
+// I2C interface on Raspberry Pi
+const char *filename = "/dev/i2c-1";
+
+class SI7021Sensor
+{
 private:
     int file;
     const int I2C_ADDRESS = 0x40; // SI7021 sensor I2C address
 
 public:
-    SI7021Sensor(const char* filename) {
-        if ((file = open(filename, O_RDWR)) < 0) {
+    SI7021Sensor(const char *filename)
+    {
+        if ((file = open(filename, O_RDWR)) < 0)
+        {
             std::cerr << "Failed to open the i2c bus" << std::endl;
             exit(1);
         }
 
-        if (ioctl(file, I2C_SLAVE, I2C_ADDRESS) < 0) {
-            std::cerr << "Failed to acquire bus access and/or talk to slave." << std::endl;
+        if (ioctl(file, I2C_SLAVE, I2C_ADDRESS) < 0)
+        {
+            std::cerr << "Failed to acquire bus access" << std::endl;
             exit(1);
         }
     }
 
-    ~SI7021Sensor() {
+    ~SI7021Sensor()
+    {
         close(file);
     }
 
-    double readHumidity() {
+    double readHumidity()
+    {
         unsigned char humidityCommand[1] = {0xE5};
-        if (write(file, humidityCommand, 1) != 1) {
-            std::cerr << "Error writing humidity command to i2c slave" << std::endl;
+        if (write(file, humidityCommand, 1) != 1)
+        {
+            std::cerr << "Error writing humidity command" << std::endl;
             exit(1);
         }
 
         usleep(100000); // Wait for measurement to be completed (100ms for hold master mode)
 
         unsigned char humidityData[2];
-        if (read(file, humidityData, 2) != 2) {
-            std::cerr << "Error reading humidity data from i2c slave" << std::endl;
+        if (read(file, humidityData, 2) != 2)
+        {
+            std::cerr << "Error reading humidity data" << std::endl;
             exit(1);
         }
 
@@ -55,18 +75,21 @@ public:
         return humidityPercentage;
     }
 
-    double readTemperature() {
+    double readTemperature()
+    {
         unsigned char tempCommand[1] = {0xE3};
-        if (write(file, tempCommand, 1) != 1) {
-            std::cerr << "Error writing temperature command to i2c slave" << std::endl;
+        if (write(file, tempCommand, 1) != 1)
+        {
+            std::cerr << "Error writing temperature command" << std::endl;
             exit(1);
         }
 
         usleep(100000); // Wait for measurement to be completed (100ms for hold master mode)
 
         unsigned char tempData[2];
-        if (read(file, tempData, 2) != 2) {
-            std::cerr << "Error reading temperature data from i2c slave" << std::endl;
+        if (read(file, tempData, 2) != 2)
+        {
+            std::cerr << "Error reading temperature data" << std::endl;
             exit(1);
         }
 
@@ -77,37 +100,67 @@ public:
     }
 };
 
-int main() {
-    const char* filename = "/dev/i2c-1"; // I2C interface on Raspberry Pi
-    SI7021Sensor sensor(filename);
-
-    // MySQL database connection settings
+class MySQLDatabase
+{
+private:
     sql::mysql::MySQL_Driver *driver;
     sql::Connection *con;
 
-    driver = sql::mysql::get_mysql_driver_instance();
-    con = driver->connect("tcp://127.0.0.1:3306/sensor_data", "kippenbroeder", "kippenbroederinator");
+public:
+    MySQLDatabase(const std::string &host, const std::string &user, const std::string &password, const std::string &database)
+    {
+        try
+        {
+            driver = sql::mysql::get_mysql_driver_instance();
+            con = driver->connect("tcp://" + host + ":3306/" + database, user, password);
+            con->setSchema(database);
+        }
+        catch (sql::SQLException &e)
+        {
+            std::cerr << "MySQL Connection Error: " << e.what() << std::endl;
+            exit(1);
+        }
+    }
 
-    while (true) {
+    ~MySQLDatabase()
+    {
+        delete con;
+    }
+
+    void insertSensorData(double humidity, double temperature)
+    {
+        try
+        {
+            sql::Statement *stmt = con->createStatement();
+            stmt->execute("INSERT INTO data (humidity, temperature) VALUES (" + std::to_string(humidity) + ", " + std::to_string(temperature) + ")");
+            delete stmt;
+        }
+        catch (sql::SQLException &e)
+        {
+            std::cerr << "MySQL Error: " << e.what() << std::endl;
+        }
+    }
+};
+
+int main()
+{
+    SI7021Sensor sensor(filename);
+
+    MySQLDatabase databaseConnection(host, user, password, database);
+
+    while (true)
+    {
         double humidity = sensor.readHumidity();
         double temperature = sensor.readTemperature();
 
         // Insert data into MySQL database
-        try {
-            sql::Statement *stmt = con->createStatement();
-            stmt->execute("INSERT INTO data (humidity, temperature) VALUES (" + std::to_string(humidity) + ", " + std::to_string(temperature) + ")");
-            delete stmt;
-        } catch (sql::SQLException &e) {
-            std::cerr << "MySQL Error: " << e.what() << std::endl;
-        }
+        databaseConnection.insertSensorData(humidity, temperature);
 
         std::cout << "Relative Humidity: " << humidity << "%" << std::endl;
         std::cout << "Temperature: " << temperature << "°C" << std::endl;
 
-        sleep(1); // Wait for 1 second before reading again
+        sleep(sleeptime); // Wait before reading again
     }
-
-    delete con;
 
     return 0;
 }
