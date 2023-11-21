@@ -6,21 +6,31 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <fstream>
+#include <string>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 #include <mysql_driver.h>
 #include <mysql_connection.h>
 #include <cppconn/statement.h>
+#include <pigpiod_if2.h>
 
-//define the amount of time between readings
+int pi = pigpio_start(NULL, NULL); // Connect to the pigpiod daemon
+
+// define the amount of time between readings
 #define sleeptime 1
+
+#define heaterPin 12
+
+#define KP 1;
+#define KI 1;
+#define KD 1;
 
 // MySQL database connection settings
 const std::string host = "127.0.0.1";
 const std::string user = "kippenbroeder";
 const std::string password = "kippenbroederinator";
 const std::string database = "sensor_data";
-
 // I2C interface on Raspberry Pi
 const char *filename = "/dev/i2c-1";
 
@@ -31,6 +41,9 @@ private:
     const int I2C_ADDRESS = 0x40; // SI7021 sensor I2C address
 
 public:
+    double temperatureCelsius;
+    double humidityPercentage;
+
     SI7021Sensor(const char *filename)
     {
         if ((file = open(filename, O_RDWR)) < 0)
@@ -51,7 +64,7 @@ public:
         close(file);
     }
 
-    double readHumidity()
+    void readHumidity()
     {
         unsigned char humidityCommand[1] = {0xE5};
         if (write(file, humidityCommand, 1) != 1)
@@ -70,12 +83,12 @@ public:
         }
 
         int humidity = ((static_cast<int>(humidityData[0]) << 8) | static_cast<int>(humidityData[1]));
-        double humidityPercentage = (125.0 * humidity / 65536.0) - 6.0;
+        humidityPercentage = (125.0 * humidity / 65536.0) - 6.0;
 
-        return humidityPercentage;
+        //    return humidityPercentage;
     }
 
-    double readTemperature()
+    void readTemperature()
     {
         unsigned char tempCommand[1] = {0xE3};
         if (write(file, tempCommand, 1) != 1)
@@ -94,9 +107,15 @@ public:
         }
 
         int temperature = ((static_cast<int>(tempData[0]) << 8) | static_cast<int>(tempData[1]));
-        double temperatureCelsius = (175.72 * temperature / 65536.0) - 46.85;
+        temperatureCelsius = (175.72 * temperature / 65536.0) - 46.85;
 
-        return temperatureCelsius;
+        // return temperatureCelsius;
+    }
+
+    void WHATISHAPPENING()
+    {
+        std::cout << "Relative Humidity: " << humidityPercentage << "%" << std::endl;
+        std::cout << "Temperature: " << temperatureCelsius << "°C" << std::endl;
     }
 };
 
@@ -142,25 +161,170 @@ public:
     }
 };
 
+class Heating
+{
+private:
+    float getTemperature()
+    {
+        float Value;
+        std::ifstream inFile("Temperature.txt");
+        if (inFile.is_open())
+        {
+            inFile >> Value;
+            inFile.close();
+            std::cout << "Temperature value read from the file: " << Value << std::endl;
+        }
+        return Value;
+    }
+
+    int mapValue(int inputValue, int inputMin, int inputMax, int outputMin, int outputMax)
+    {
+        // Ensure the input value is within the specified range
+        inputValue = std::max(inputMin, std::min(inputValue, inputMax));
+
+        // Map the input value to the output range
+        return static_cast<int>((static_cast<double>(inputValue - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin) + outputMin);
+    }
+
+public:
+    Heating()
+    {
+        // Set GPIO pin as output
+        set_mode(pi, heaterPin, PI_OUTPUT);
+    }
+
+    ~Heating()
+    {
+        gpio_write(pi, heaterPin, 0);
+    }
+
+    void controlTemperatureOnOff(float current)
+    {
+        float currentTemperature = current;
+        float wantedTemperature;
+
+        wantedTemperature = getTemperature();
+        // aan/uit schakelaar
+        if (currentTemperature <= wantedTemperature)
+        {
+            gpio_write(pi, heaterPin, 1); // Set high
+            std::cout << "Heater is now ON" << std::endl;
+        }
+        else
+        {
+            gpio_write(pi, heaterPin, 0); // Set low
+            std::cout << "Heater is now OFF" << std::endl;
+        }
+    }
+
+    void controlTemperaturePWM(int input)
+    {
+        int PWM = mapValue(input, 0, 100, 0, 255);
+
+        gpioPWM(heaterPin, PWM); // turn PWm full on
+    }
+};
+
+class PID
+{
+    // https://www.javatpoint.com/pid-controller-cpp
+
+private:
+    double setpoint;        // desired output
+    double processVariable; // current output
+    double error;           // difference between setpoint and processVariable
+    double previousError;   // error in previous iteration
+    double integral;        // integral of error
+    double derivative;      // derivative of error
+    double kp = KP;         // proportional gain
+    double ki = KI;         // integral gain
+    double kd = KD;         // derivative gain
+    double output;          // output of the controller
+
+    float getSetpoint()
+    {
+        float Value;
+        std::ifstream inFile("Temperature.txt");
+        if (inFile.is_open())
+        {
+            inFile >> Value;
+            inFile.close();
+            std::cout << "Temperature value read from the file: " << Value << std::endl;
+        }
+        return Value;
+    }
+
+public:
+    double calculateP(double processVariable)
+    {
+        setpoint = getSetpoint();
+        error = setpoint - processVariable;
+        output = (kp * error);
+        previousError = error;
+        return output;
+        // return (ouput > 0 ? output :0);
+    }
+
+    double calculatePI(double processVariable)
+    {
+        setpoint = getSetpoint();
+        error = setpoint - processVariable;
+        integral += error;
+        output = (kp * error) + (ki * integral);
+        previousError = error;
+        return output;
+    }
+
+    double calculatePID(double processVariable)
+    {
+        setpoint = getSetpoint();
+        error = setpoint - processVariable;
+        integral += error;
+        derivative = error - previousError;
+        output = (kp * error) + (ki * integral) + (kd * derivative);
+        previousError = error;
+        return output;
+    }
+
+    void WHATISHAPPENING()
+    {
+        std::cout << "setpoint: " << setpoint << std::endl;
+        std::cout << "process variable: " << processVariable << std::endl;
+        std::cout << "error: " << error << std::endl;
+        std::cout << "previousError: " << previousError << std::endl;
+        // std::cout << "integral: " << integral << std::endl;
+        // std::cout << "derivative: " << derivative << std::endl;
+        std::cout << "output: " << output << std::endl;
+    }
+};
+
 int main()
 {
     SI7021Sensor sensor(filename);
 
     MySQLDatabase databaseConnection(host, user, password, database);
 
+    Heating heater;
+
+    PID magic;
+
     while (true)
     {
-        double humidity = sensor.readHumidity();
-        double temperature = sensor.readTemperature();
+        // double humidity = sensor.readHumidity();
+        // double temperature = sensor.readTemperature();
+        sensor.readHumidity();
+        sensor.readTemperature();
 
         // Insert data into MySQL database
-        databaseConnection.insertSensorData(humidity, temperature);
+        databaseConnection.insertSensorData(sensor.humidityPercentage, sensor.temperatureCelsius);
 
-        std::cout << "Relative Humidity: " << humidity << "%" << std::endl;
-        std::cout << "Temperature: " << temperature << "°C" << std::endl;
+        heater.controlTemperatureOnOff(sensor.temperatureCelsius);
+
+        sensor.WHATISHAPPENING();
 
         sleep(sleeptime); // Wait before reading again
     }
 
+    pigpio_stop(pi); // Disconnect from the pigpiod daemon
     return 0;
 }
