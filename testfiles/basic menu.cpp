@@ -1,51 +1,35 @@
+// g++ "basic menu.cpp" -o basic_menu -lpigpiod_if2
+
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <unistd.h>
+#include <pigpiod_if2.h>
+
+int pi = pigpio_start(NULL, NULL); // Connect to the pigpiod daemon
 
 class GPIOButton
 {
 private:
-    std::string buttonPin;
+    int buttonPin;
 
 public:
-    GPIOButton(const std::string &pin) : buttonPin(pin)
+    GPIOButton(int pin) : buttonPin(pin)
     {
-        // Export the GPIO pin
-        std::ofstream exportFile("/sys/class/gpio/export");
-        exportFile << buttonPin;
-        exportFile.close();
-
         // Set the pin as input
-        std::ofstream directionFile("/sys/class/gpio/gpio" + buttonPin + "/direction");
-        directionFile << "in";
-        directionFile.close();
-    }
-
-    ~GPIOButton()
-    {
-        // Unexport the GPIO pin
-        std::ofstream unexportFile("/sys/class/gpio/unexport");
-        unexportFile << buttonPin;
-        unexportFile.close();
+        set_mode(pi, buttonPin, PI_INPUT);
     }
 
     bool isButtonPressed()
     {
-        std::ifstream valueFile("/sys/class/gpio/gpio" + buttonPin + "/value");
-        std::string value;
-        valueFile >> value;
-        valueFile.close();
-
-        // Check if the button is pressed (HIGH)
-        return value == "1";
+        // Read the state of the button
+        return gpio_read(pi, buttonPin) == 1;
     }
 };
 
 class Menu
 {
 private:
-    const std::string buttonPinMenu = "17";
+    const int buttonPinMenu = 17;
     GPIOButton buttonUp{buttonPinMenu};
 
 public:
@@ -53,12 +37,12 @@ public:
 
     Menu()
     {
-        std::cout << "Press the first button to cycle menu" << std::endl;
+        std::cout << "Press the first button to cycle the menu" << std::endl;
     }
 
     void checkMenu()
     {
-        // Logic to read menu using the button
+        // Logic to read the menu using the button
         // Add your menu navigation logic here
         if (buttonUp.isButtonPressed())
         {
@@ -81,7 +65,7 @@ public:
                 break;
             }
 
-            usleep(200000); // Add a small delay (200ms) for debouncing
+            time_sleep(0.2); // Add a small delay (200ms) for debouncing
         }
     }
 };
@@ -89,8 +73,8 @@ public:
 class ValueChanger
 {
 private:
-    const std::string buttonPinUp = "27";
-    const std::string buttonPinDown = "22";
+    const int buttonPinUp = 27;
+    const int buttonPinDown = 22;
 
     GPIOButton buttonUp{buttonPinUp};
     GPIOButton buttonDown{buttonPinDown};
@@ -125,35 +109,9 @@ public:
             inFile2.close();
             std::cout << "Day value read from the file: " << Daycounter << std::endl;
         }
-        std::cout << "Press the second button to increse value!" << std::endl;
-        std::cout << "Press the third button to decrese value!" << std::endl;
+        std::cout << "Press the second button to increase value!" << std::endl;
+        std::cout << "Press the third button to decrease value!" << std::endl;
     }
-
-    // ~ValueChanger()
-    // {
-    //     // Store the value in File
-    //     std::ofstream outFile("Temperature.txt");
-    //     if (outFile.is_open())
-    //     {
-    //         outFile << TemperatureValue;
-    //         outFile.close();
-    //         std::cout << "Value has been stored in the file." << std::endl;
-    //     }
-    //     std::ofstream outFile("Humidity.txt");
-    //     if (outFile.is_open())
-    //     {
-    //         outFile << HumidityValue;
-    //         outFile.close();
-    //         std::cout << "Value has been stored in the file." << std::endl;
-    //     }
-    //     std::ofstream outFile("Days.txt");
-    //     if (outFile.is_open())
-    //     {
-    //         outFile << Daycounter;
-    //         outFile.close();
-    //         std::cout << "Value has been stored in the file." << std::endl;
-    //     }
-    // }
 
     void checkValue()
     {
@@ -164,7 +122,7 @@ public:
             {
                 TemperatureValue = TemperatureValue + 0.1;
                 std::cout << "Temperature = " << TemperatureValue << std::endl;
-                usleep(200000); // Add a small delay (200ms) for debouncing
+                time_sleep(0.2); // Add a small delay (200ms) for debouncing
                 // Store the value in File
                 std::ofstream outFile("Temperature.txt");
                 if (outFile.is_open())
@@ -178,7 +136,7 @@ public:
             {
                 TemperatureValue = TemperatureValue - 0.1;
                 std::cout << "Temperature = " << TemperatureValue << std::endl;
-                usleep(200000); // Add a small delay (200ms) for debouncing
+                time_sleep(0.2); // Add a small delay (200ms) for debouncing
                 // Store the value in File
                 std::ofstream outFile("Temperature.txt");
                 if (outFile.is_open())
@@ -194,8 +152,8 @@ public:
             {
                 HumidityValue = HumidityValue + 0.1;
                 std::cout << "Humidity = " << HumidityValue << std::endl;
-                usleep(200000); // Add a small delay (200ms) for debouncing
-                                // Store the value in File
+                time_sleep(0.2); // Add a small delay (200ms) for debouncing
+                                 // Store the value in File
                 std::ofstream outFile1("Humidity.txt");
                 if (outFile1.is_open())
                 {
@@ -208,8 +166,8 @@ public:
             {
                 HumidityValue = HumidityValue - 0.1;
                 std::cout << "Humidity = " << HumidityValue << std::endl;
-                usleep(200000); // Add a small delay (200ms) for debouncing
-                                // Store the value in File
+                time_sleep(0.2); // Add a small delay (200ms) for debouncing
+                                 // Store the value in File
                 std::ofstream outFile1("Humidity.txt");
                 if (outFile1.is_open())
                 {
@@ -224,8 +182,8 @@ public:
             {
                 Daycounter++;
                 std::cout << "Days left: " << Daycounter << std::endl;
-                usleep(200000); // Add a small delay (200ms) for debouncing
-                                // Store the value in File
+                time_sleep(0.2); // Add a small delay (200ms) for debouncing
+                                 // Store the value in File
                 std::ofstream outFile2("Days.txt");
                 if (outFile2.is_open())
                 {
@@ -238,8 +196,8 @@ public:
             {
                 Daycounter--;
                 std::cout << "Days left: " << Daycounter << std::endl;
-                usleep(200000); // Add a small delay (200ms) for debouncing
-                                // Store the value in File
+                time_sleep(0.2); // Add a small delay (200ms) for debouncing
+                                 // Store the value in File
                 std::ofstream outFile2("Days.txt");
                 if (outFile2.is_open())
                 {
@@ -256,7 +214,7 @@ public:
 class Fan
 {
 private:
-    const std::string buttonPinFan = "18";
+    const int buttonPinFan = 18;
     GPIOButton buttonUp{buttonPinFan};
 
 public:
@@ -264,18 +222,16 @@ public:
 
     Fan()
     {
-        std::cout << "Press the button turn on fan" << std::endl;
+        std::cout << "Press the button to turn on/off the fan" << std::endl;
     }
 
     void checkFan()
     {
-
         if (buttonUp.isButtonPressed())
         {
             fanState = !fanState;
-            std::cout << "fan = " << fanState << std::endl;
-
-            usleep(200000); // Add a small delay (200ms) for debouncing
+            std::cout << "Fan = " << (fanState ? "On" : "Off") << std::endl;
+            time_sleep(0.2); // Add a small delay (200ms) for debouncing
         }
     }
 };
@@ -293,8 +249,11 @@ int main()
         menu.checkMenu();
         fan.checkFan();
 
-        usleep(10000); // Delay to reduce CPU usage
+        time_sleep(0.01); // Delay to reduce CPU usage
     }
+
+    pigpio_stop(pi); // Disconnect from the pigpiod daemon
 
     return 0;
 }
+
