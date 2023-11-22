@@ -1,4 +1,4 @@
-/// usr/bin/g++ -g database_integration.cpp -o database_integration -lmysqlcppconn
+/// g++ -g database_integration.cpp -o database_integration -lpigpiod_if2 -lrt -lmysqlcppconn -lpigpio
 
 #include <iostream>
 #include <stdio.h>
@@ -22,7 +22,7 @@ int pi = pigpio_start(NULL, NULL); // Connect to the pigpiod daemon
 
 #define heaterPin 12
 
-#define KP 1;
+#define KP 0.5;
 #define KI 1;
 #define KD 1;
 
@@ -49,13 +49,13 @@ public:
         if ((file = open(filename, O_RDWR)) < 0)
         {
             std::cerr << "Failed to open the i2c bus" << std::endl;
-            exit(1);
+            // exit(1);
         }
 
         if (ioctl(file, I2C_SLAVE, I2C_ADDRESS) < 0)
         {
             std::cerr << "Failed to acquire bus access" << std::endl;
-            exit(1);
+            // exit(1);
         }
     }
 
@@ -70,7 +70,7 @@ public:
         if (write(file, humidityCommand, 1) != 1)
         {
             std::cerr << "Error writing humidity command" << std::endl;
-            exit(1);
+            // exit(1);
         }
 
         usleep(100000); // Wait for measurement to be completed (100ms for hold master mode)
@@ -79,7 +79,7 @@ public:
         if (read(file, humidityData, 2) != 2)
         {
             std::cerr << "Error reading humidity data" << std::endl;
-            exit(1);
+            // exit(1);
         }
 
         int humidity = ((static_cast<int>(humidityData[0]) << 8) | static_cast<int>(humidityData[1]));
@@ -94,7 +94,7 @@ public:
         if (write(file, tempCommand, 1) != 1)
         {
             std::cerr << "Error writing temperature command" << std::endl;
-            exit(1);
+            // exit(1);
         }
 
         usleep(100000); // Wait for measurement to be completed (100ms for hold master mode)
@@ -103,7 +103,7 @@ public:
         if (read(file, tempData, 2) != 2)
         {
             std::cerr << "Error reading temperature data" << std::endl;
-            exit(1);
+            // exit(1);
         }
 
         int temperature = ((static_cast<int>(tempData[0]) << 8) | static_cast<int>(tempData[1]));
@@ -137,7 +137,7 @@ public:
         catch (sql::SQLException &e)
         {
             std::cerr << "MySQL Connection Error: " << e.what() << std::endl;
-            exit(1);
+            // exit(1);
         }
     }
 
@@ -177,13 +177,12 @@ private:
         return Value;
     }
 
-    int mapValue(int inputValue, int inputMin, int inputMax, int outputMin, int outputMax)
+    double mapValue(double inputValue, double inputMin, double inputMax, double outputMin, double outputMax)
     {
-        // Ensure the input value is within the specified range
-        inputValue = std::max(inputMin, std::min(inputValue, inputMax));
 
-        // Map the input value to the output range
-        return static_cast<int>((static_cast<double>(inputValue - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin) + outputMin);
+        double mappedValue = std::max((((inputValue - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin) + outputMin), 0.0);
+
+        return mappedValue;
     }
 
 public:
@@ -191,6 +190,8 @@ public:
     {
         // Set GPIO pin as output
         set_mode(pi, heaterPin, PI_OUTPUT);
+        // initialize GPIO
+        gpioInitialise();
     }
 
     ~Heating()
@@ -217,11 +218,14 @@ public:
         }
     }
 
-    void controlTemperaturePWM(int input)
+    void controlTemperaturePWM(double input)
     {
-        int PWM = mapValue(input, 0, 100, 0, 255);
+        double PWM = mapValue(input, 0, 50, 0, 100);
 
-        gpioPWM(heaterPin, PWM); // turn PWm full on
+        std::cout << "pwm: " << PWM << std::endl;
+
+        // gpioPWM(heaterPin, PWM); // turn PWm full on
+        gpioHardwarePWM(heaterPin, 1000, (PWM * 1000));
     }
 };
 
@@ -249,7 +253,6 @@ private:
         {
             inFile >> Value;
             inFile.close();
-            std::cout << "Temperature value read from the file: " << Value << std::endl;
         }
         return Value;
     }
@@ -291,7 +294,7 @@ public:
         std::cout << "setpoint: " << setpoint << std::endl;
         std::cout << "process variable: " << processVariable << std::endl;
         std::cout << "error: " << error << std::endl;
-        std::cout << "previousError: " << previousError << std::endl;
+        // std::cout << "previousError: " << previousError << std::endl;
         // std::cout << "integral: " << integral << std::endl;
         // std::cout << "derivative: " << derivative << std::endl;
         std::cout << "output: " << output << std::endl;
@@ -314,13 +317,14 @@ int main()
         // double temperature = sensor.readTemperature();
         sensor.readHumidity();
         sensor.readTemperature();
+        sensor.WHATISHAPPENING();
 
         // Insert data into MySQL database
         databaseConnection.insertSensorData(sensor.humidityPercentage, sensor.temperatureCelsius);
 
-        heater.controlTemperatureOnOff(sensor.temperatureCelsius);
-
-        sensor.WHATISHAPPENING();
+        // heater.controlTemperatureOnOff(sensor.temperatureCelsius);
+        heater.controlTemperaturePWM(magic.calculateP(sensor.temperatureCelsius));
+        magic.WHATISHAPPENING();
 
         sleep(sleeptime); // Wait before reading again
     }
