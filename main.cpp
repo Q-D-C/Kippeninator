@@ -16,7 +16,8 @@
 #include <cppconn/statement.h>
 #include <pigpiod_if2.h>
 
-int pi = pigpio_start(NULL, NULL); // Connect to the pigpiod daemon
+bool printStuffVraagteken = false;
+bool printTurning = true;
 
 // define the amount of time between readings
 #define sleeptime 5
@@ -24,9 +25,9 @@ int pi = pigpio_start(NULL, NULL); // Connect to the pigpiod daemon
 #define heaterPin 12
 
 // values for the PID controller
-#define KP 6;
-#define KI 0.017;
-#define KD 0;
+#define KP 24
+#define KI 0.20
+#define KD 900
 
 // values for the map function
 int mapMIN = 0;
@@ -43,7 +44,7 @@ int mapMAX = 100;
 #define MOTOR_STEPS 150
 
 // define every how many hours the eggs will turn
-#define TURNHOWMANYTIMES 2 // every x hour(s)
+#define TURNHOWMANYTIMES 15 // every x hour(s)/minute(s)
 
 // MySQL database connection settings
 const std::string host = "127.0.0.1";
@@ -108,6 +109,11 @@ public:
         // do some calculation magic from the datasheet
         int humidity = ((static_cast<int>(humidityData[0]) << 8) | static_cast<int>(humidityData[1]));
         humidityPercentage = (125.0 * humidity / 65536.0) - 6.0;
+
+        if (printStuffVraagteken)
+        {
+            std::cout << "Humidity:    " << humidityPercentage << "%" << std::endl;
+        }
     }
 
     void readTemperature()
@@ -154,13 +160,10 @@ public:
         }
         previousTemperature = temperatureCelsius;
 
-        // return temperatureCelsius;
-    }
-
-    void WHATISHAPPENING() // debug stufsszfdz
-    {
-        std::cout << "Humidity:    " << humidityPercentage << "%" << std::endl;
-        std::cout << "Temperature: " << temperatureCelsius << "°C" << std::endl;
+        if (printStuffVraagteken)
+        {
+            std::cout << "Temperature: " << temperatureCelsius << "°C" << std::endl;
+        }
     }
 };
 
@@ -212,6 +215,8 @@ public:
 class Heating
 {
 private:
+    int pi;
+
     float getTemperature() // get the set temperature that has been written into a file
     {
         float Value;
@@ -238,12 +243,11 @@ private:
 public:
     double power = 0;
 
-    Heating()
+    Heating(int pigpio_instance)
+        : pi(pigpio_instance)
     {
         // Set GPIO pin as output
         set_mode(pi, heaterPin, PI_OUTPUT);
-        // initialize GPIO
-        gpioInitialise();
     }
 
     ~Heating()
@@ -282,10 +286,12 @@ public:
 
         // also convert it to a % for people who dont understand PWM scale, you know who you are
         power = mapValue(input, mapMIN, mapMAX, 0, 100);
-        std::cout << "pwm:         " << pwmm << std::endl;
-        std::cout << "power:       " << power << "%" << std::endl;
-        std::cout << std::endl;
-
+        if (printStuffVraagteken)
+        {
+            std::cout << "pwm:         " << pwmm << std::endl;
+            std::cout << "power:       " << power << "%" << std::endl;
+            std::cout << std::endl;
+        }
         // make sure the PWM works in the wanted Hz and actually do something with it
         set_PWM_frequency(pi, heaterPin, PWMHz);
         gpioPWM(heaterPin, pwmm); // turn PWm on
@@ -355,12 +361,14 @@ public:
         output = pVal + iVal + dVal;
         previousError = error;
 
-        // print for debug
-        std::cout << "error:       " << error << std::endl;
-        std::cout << "P:           " << pVal << std::endl;
-        std::cout << "I:           " << iVal << std::endl;
-        std::cout << "D:           " << dVal << std::endl;
-        std::cout << "PID:         " << output << std::endl;
+        if (printStuffVraagteken)
+        {
+            std::cout << "error:       " << error << std::endl;
+            std::cout << "P:           " << pVal << std::endl;
+            std::cout << "I:           " << iVal << std::endl;
+            std::cout << "D:           " << dVal << std::endl;
+            std::cout << "PID:         " << output << std::endl;
+        }
         return output;
     }
 };
@@ -368,18 +376,20 @@ public:
 class Motor
 {
 public:
-    Motor();
+    Motor(int pigpio_instance);
     ~Motor();
 
     void setStep(int out1, int out2, int out3, int out4);
     void rotateClockwise();        // void forward(double delay, int steps);
     void rotateCounterClockwise(); // void backwards(double delay, int steps);
-    void startMotorEveryTwoMinutes();
-    void startMotorEveryXHours()
+    void startMotorEveryXMinutes();
+    void startMotorEveryXHours();
 
-        private : static const int Seq[][4];
+private:
+    int pi;
+    static const int Seq[][4];
     double turnedAt;
-    double currentTime
+    double currentTime;
 };
 
 const int Motor::Seq[][4] = {
@@ -392,7 +402,8 @@ const int Motor::Seq[][4] = {
     {0, 0, 1, 0},
     {0, 1, 1, 0}};
 
-Motor::Motor()
+Motor::Motor(int pigpio_instance)
+    : pi(pigpio_instance)
 {
     set_mode(pi, MOTOR_PIN1, PI_OUTPUT);
     set_mode(pi, MOTOR_PIN2, PI_OUTPUT);
@@ -415,6 +426,10 @@ void Motor::setStep(int out1, int out2, int out3, int out4)
 
 void Motor::rotateClockwise()
 { // forward
+    if (printStuffVraagteken)
+    {
+        std::cerr << "ROTATING" << std::endl;
+    }
     for (int i = 0; i < MOTOR_STEPS; ++i)
     {
         for (int j = 0; j < 8; ++j)
@@ -437,18 +452,22 @@ void Motor::rotateCounterClockwise()
     }
 }
 
-void Motor::startMotorEveryTwoMinutes()
+void Motor::startMotorEveryXMinutes()
 {
     time_t now = time(0);
     tm *ltm = localtime(&now);
 
-    if (ltm->tm_min % 2 == 0)
+    currentTime = ltm->tm_min;
+    turnedAt;
+
+    if (ltm->tm_min % 2 == TURNHOWMANYTIMES && currentTime != turnedAt)
     {
-        std::cout << "eggos gedraaid om: " << asctime(ltm);
+        if (printTurning)
+        {
+            std::cout << "eggos gedraaid om: " << asctime(ltm);
+	}
+	turnedAt = currentTime;
         rotateClockwise();
-    }
-    else
-    {
     }
 }
 
@@ -458,34 +477,48 @@ void Motor::startMotorEveryXHours()
     tm *ltm = localtime(&now);
 
     currentTime = ltm->tm_hour;
-    double turnedAt;
+    turnedAt;
 
     if (ltm->tm_hour % TURNHOWMANYTIMES == 0 && currentTime != turnedAt)
     {
-        std::cout << "eggos gedraaid om: " << asctime(ltm);
-        turnedAt = currentTime;
-        rotateClockwise();
+        if (printTurning)
+        {
+            std::cout << "eggos gedraaid om: " << asctime(ltm);
+            {
+                turnedAt = currentTime;
+                rotateClockwise();
+            }
+        }
     }
 }
 
 int main()
 {
+    // initialize GPIO
+    gpioInitialise();
+    int pi = pigpio_start(NULL, NULL); // Connect to the pigpiod daemon
+
+    if (pi < 0)
+    {
+        std::cerr << "Failed to initialize pigpio: " << pi << std::endl;
+        return -1;
+    }
+
     SI7021Sensor sensor(filename);
 
     SQLDatabase databaseConnection(host, user, password, database);
 
-    Heating heater;
+    Heating heater(pi);
 
     PID magic;
 
-    Motor motor;
+    Motor motor(pi);
 
     while (true)
     {
-        //read all the needed data from the sensors
+        // read all the needed data from the sensors
         sensor.readHumidity();
         sensor.readTemperature();
-        sensor.WHATISHAPPENING();
 
         // heater.controlTemperatureOnOff(sensor.temperatureCelsius);
         heater.controlTemperaturePWM(magic.calculatePID(sensor.temperatureCelsius));
@@ -494,7 +527,7 @@ int main()
         databaseConnection.insertSensorData(sensor.humidityPercentage, sensor.temperatureCelsius, magic.pVal, magic.iVal, magic.dVal, magic.output, heater.power);
 
         // check if the "eggos" need to be turned
-        motor.startMotorEveryTwoMinutes();
+        motor.startMotorEveryXMinutes();
 
         sleep(sleeptime); // Wait before reading again
     }
