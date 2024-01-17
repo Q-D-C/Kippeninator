@@ -7,21 +7,21 @@
 #include <unistd.h>
 #include <bitset>
 
-#define MENUPIN 17
-#define UPPIN 27
-#define DOWNPIN 22
+#define MENUPIN 0
+#define UPPIN 9
+#define DOWNPIN 6
 
 // Define GPIO to LCD mapping
-#define LCD_RS 2
-#define LCD_E 3
-#define LCD_D0 26
-#define LCD_D1 19
-#define LCD_D2 13
-#define LCD_D3 6
-#define LCD_D4 25
-#define LCD_D5 8
-#define LCD_D6 7
-#define LCD_D7 1
+#define LCD_RS 21
+#define LCD_E  20
+#define LCD_D0 16
+#define LCD_D1 12
+#define LCD_D2 1
+#define LCD_D3 7
+#define LCD_D4 8
+#define LCD_D5 25
+#define LCD_D6 24
+#define LCD_D7 23
 
 #define LCD_LINE_1 0x80
 #define LCD_LINE_2 0xC0
@@ -29,7 +29,7 @@
 class Display
 {
 public:
-    Display();
+    Display(int pigpio_instance);
     ~Display();
 
     void init();
@@ -49,24 +49,12 @@ private:
     void string(const char *message);
 };
 
-Display::Display()
+Display::Display(int pigpio_instance) : pi(pigpio_instance)
 {
-    // Connect to pigpiod daemon
-    pi = pigpio_start(NULL, NULL);
-
-    if (pi < 0)
-    {
-        fprintf(stderr, "Error connecting to pigpiod: %s\n", pigpio_error(pi));
-        // Handle error, throw an exception, or exit the program as appropriate
-    }
 
     // Set up GPIO
     set_mode(pi, LCD_E, PI_OUTPUT);
     set_mode(pi, LCD_RS, PI_OUTPUT);
-    set_mode(pi, LCD_D0, PI_OUTPUT);
-    set_mode(pi, LCD_D1, PI_OUTPUT);
-    set_mode(pi, LCD_D2, PI_OUTPUT);
-    set_mode(pi, LCD_D3, PI_OUTPUT);
     set_mode(pi, LCD_D4, PI_OUTPUT);
     set_mode(pi, LCD_D5, PI_OUTPUT);
     set_mode(pi, LCD_D6, PI_OUTPUT);
@@ -85,15 +73,17 @@ Display::~Display()
 void Display::init()
 {
     // Initialize display
-    byte(0x38, LCD_CMD);  // 8-bit mode, 2-line, 5x8 font
-    byte(0x0C, LCD_CMD);  // Display on, cursor off, blink off
-    byte(0x06, LCD_CMD);  // Entry mode set, increment cursor
-    byte(0x01, LCD_CMD);  // Clear display
-    usleep(E_DELAY * 10); // Short delay for the clear display command to complete
+    //byte(0x33, LCD_CMD);
+    //byte(0x32, LCD_CMD);
+    byte(0x28, LCD_CMD);//4 bit, 2 line display, 5x8 dot matrix
+    byte(0x0C, LCD_CMD);//display on, cursor off
+    byte(0x06, LCD_CMD);//entry mode set
+    byte(0x01, LCD_CMD);//clear display
 }
 
 void Display::print(const int row, const char *line)
 {
+    byte(0x01, LCD_CMD);
     // Send some text to the display
     byte(row, LCD_CMD);
     string(line);
@@ -101,24 +91,38 @@ void Display::print(const int row, const char *line)
     usleep(E_DELAY * 2); // Short delay before next command
 }
 
-void Display::byte(int bits, int mode)
-{
+void Display::byte(int bits, int mode) {
     // Send byte to data pins
     // bits = data
-    // mode = true for character, false for command
-
+    // mode = true  for character
+    //        false for command
+    
+    //int filter = (bits & 0x08) == 0x08;
+    //std::bitset<8> x(filter);
+	//std::cout << x << '\n';
+    
     gpio_write(pi, LCD_RS, mode); // RS
 
-    // Data bits (D0-D7)
-    gpio_write(pi, LCD_D0, (bits & 0x01) == 0x01);
-    gpio_write(pi, LCD_D1, (bits & 0x02) == 0x02);
-    gpio_write(pi, LCD_D2, (bits & 0x04) == 0x04);
-    gpio_write(pi, LCD_D3, (bits & 0x08) == 0x08);
-
+    // High bits
     gpio_write(pi, LCD_D4, (bits & 0x10) == 0x10);
     gpio_write(pi, LCD_D5, (bits & 0x20) == 0x20);
     gpio_write(pi, LCD_D6, (bits & 0x40) == 0x40);
     gpio_write(pi, LCD_D7, (bits & 0x80) == 0x80);
+    
+    // Toggle 'Enable' pin
+    usleep(E_DELAY);
+    gpio_write(pi, LCD_E, 1);
+    usleep(E_PULSE);
+    gpio_write(pi, LCD_E, 0);
+    usleep(E_DELAY);
+
+    // Low bits
+    gpio_write(pi, LCD_D4, (bits & 0x01) == 0x01);
+    gpio_write(pi, LCD_D5, (bits & 0x02) == 0x02);
+    gpio_write(pi, LCD_D6, (bits & 0x04) == 0x04);
+    gpio_write(pi, LCD_D7, (bits & 0x08) == 0x08);
+
+	
 
     // Toggle 'Enable' pin
     usleep(E_DELAY);
@@ -149,27 +153,30 @@ class Menu
 {
 private:
     static Menu *menuInstance;
-
-    Display display;
+    
+    int pi;
 
     static const int buttonMenu = MENUPIN;
     static const int buttonUp = UPPIN;
     static const int buttonDown = DOWNPIN;
-
-    int pi;
+    
+    Display &display;
 
     int Menustate = 0;
     int Daycounter = 19;
     float TemperatureValue = 37.5;
-    float HumidityValue = 65;
+    float HumidityValue = 65.0;
 
-    std::string TempTekst = "Temperatuur: ";
-    std::string HumiTekst = "Humidity: ";
+    std::string TempTekst = "Temperatuur:";
+    std::string HumiTekst = "Water %: ";
     std::string DaysTekst = "Days left: ";
-    std::string toPrint;
+    
 
 public:
-    Menu(int pigpio_instance) : pi(pigpio_instance)
+
+    std::string toPrint;
+    
+    Menu(int pigpio_instance, Display &displayObject) : pi(pigpio_instance), display(displayObject) 
     {
         menuInstance = this;
 
@@ -185,20 +192,24 @@ public:
     static void checkMenuStatic(int gpio, int level, uint32_t tick)
     {
         menuInstance->checkMenu(gpio, level, tick);
+        usleep(50);
     }
 
     static void checkUpStatic(int gpio, int level, uint32_t tick)
     {
         menuInstance->ValueUp(gpio, level, tick);
+        usleep(50);
     }
 
     static void checkDownStatic(int gpio, int level, uint32_t tick)
     {
         menuInstance->ValueDown(gpio, level, tick);
+        usleep(50);
     }
 
     void checkMenu(int gpio, int level, uint32_t tick)
     {
+        std::cout << "MENU" << std::endl;
         Menustate++;
         if (Menustate > 2)
         {
@@ -207,29 +218,23 @@ public:
         switch (Menustate)
         {
         case 0:
-            toPrint = TempTekst + std::to_string(TemperatureValue);
-            display.print(LCD_LINE_1, toPrint.c_str());
-
-            // display.print(LCD_LINE_1, "Temperatuur: ");
-            // display.print(LCD_LINE_2, TemperatureValue);
+            toPrint = std::to_string(TemperatureValue);
+             display.print(LCD_LINE_1, "Temperatuur: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
 
             std::cout << TempTekst << TemperatureValue << std::endl;
             break;
         case 1:
-            toPrint = HumiTekst + std::to_string(HumidityValue);
-            display.print(LCD_LINE_1, toPrint.c_str());
-
-            // display.print(LCD_LINE_1, "Humidity: ");
-            // display.print(LCD_LINE_2, HumidityValue);
+            toPrint = std::to_string(HumidityValue);
+             display.print(LCD_LINE_1, "Humidity: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
 
             std::cout << HumiTekst << HumidityValue << std::endl;
             break;
         case 2:
-            toPrint = DaysTekst + std::to_string(Daycounter);
-            display.print(LCD_LINE_1, toPrint.c_str());
-
-            // display.print(LCD_LINE_1, "Days Left: ");
-            // display.print(LCD_LINE_2, Daycounter);
+            toPrint = std::to_string(Daycounter);
+             display.print(LCD_LINE_1, "Days Left: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
 
             std::cout << DaysTekst << Daycounter << std::endl;
             break;
@@ -239,12 +244,16 @@ public:
 
     void ValueUp(int gpio, int level, uint32_t tick)
     {
+        std::cout << "UP" << std::endl;
         switch (Menustate)
         {
         case 0:
             if (true)
             {
                 TemperatureValue = TemperatureValue + 0.1;
+                            toPrint = std::to_string(TemperatureValue);
+             display.print(LCD_LINE_1, "Temperatuur: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
                 std::cout << "Temperature = " << TemperatureValue << std::endl;
                 time_sleep(0.2); // Add a small delay (200ms) for debouncing
                 // Store the value in File
@@ -253,7 +262,7 @@ public:
                 {
                     outFile << TemperatureValue;
                     outFile.close();
-                    std::cout << "Value has been stored in the file." << std::endl;
+                    //std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
             break;
@@ -261,6 +270,9 @@ public:
             if (true)
             {
                 HumidityValue = HumidityValue + 0.1;
+                            toPrint = std::to_string(HumidityValue);
+             display.print(LCD_LINE_1, "Humidity: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
                 std::cout << "Humidity = " << HumidityValue << std::endl;
                 time_sleep(0.2); // Add a small delay (200ms) for debouncing
                                  // Store the value in File
@@ -269,7 +281,7 @@ public:
                 {
                     outFile1 << HumidityValue;
                     outFile1.close();
-                    std::cout << "Value has been stored in the file." << std::endl;
+                    //std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
             break;
@@ -277,6 +289,9 @@ public:
             if (true)
             {
                 Daycounter++;
+                            toPrint = std::to_string(Daycounter);
+             display.print(LCD_LINE_1, "Days Left: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
                 std::cout << "Days left: " << Daycounter << std::endl;
                 time_sleep(0.2); // Add a small delay (200ms) for debouncing
                                  // Store the value in File
@@ -285,7 +300,7 @@ public:
                 {
                     outFile2 << Daycounter;
                     outFile2.close();
-                    std::cout << "Value has been stored in the file." << std::endl;
+                    //std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
             break;
@@ -295,12 +310,16 @@ public:
 
     void ValueDown(int gpio, int level, uint32_t tick)
     {
+        std::cout << "DOWN" << std::endl;
         switch (Menustate)
         {
         case 0:
             if (true)
             {
-                TemperatureValue = TemperatureValue + 0.1;
+                TemperatureValue = TemperatureValue - 0.1;
+                            toPrint = std::to_string(TemperatureValue);
+             display.print(LCD_LINE_1, "Temperatuur: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
                 std::cout << "Temperature = " << TemperatureValue << std::endl;
                 time_sleep(0.2); // Add a small delay (200ms) for debouncing
                 // Store the value in File
@@ -309,14 +328,17 @@ public:
                 {
                     outFile << TemperatureValue;
                     outFile.close();
-                    std::cout << "Value has been stored in the file." << std::endl;
+                    //std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
             break;
         case 1:
             if (true)
             {
-                HumidityValue = HumidityValue + 0.1;
+                HumidityValue = HumidityValue - 0.1;
+                            toPrint = std::to_string(HumidityValue);
+             display.print(LCD_LINE_1, "Humidity: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
                 std::cout << "Humidity = " << HumidityValue << std::endl;
                 time_sleep(0.2); // Add a small delay (200ms) for debouncing
                                  // Store the value in File
@@ -325,14 +347,17 @@ public:
                 {
                     outFile1 << HumidityValue;
                     outFile1.close();
-                    std::cout << "Value has been stored in the file." << std::endl;
+                    //std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
             break;
         case 2:
             if (true)
             {
-                Daycounter++;
+                Daycounter--;
+                            toPrint = std::to_string(Daycounter);
+             display.print(LCD_LINE_1, "Days Left: ");
+             display.print(LCD_LINE_2, toPrint.c_str());
                 std::cout << "Days left: " << Daycounter << std::endl;
                 time_sleep(0.2); // Add a small delay (200ms) for debouncing
                                  // Store the value in File
@@ -341,7 +366,7 @@ public:
                 {
                     outFile2 << Daycounter;
                     outFile2.close();
-                    std::cout << "Value has been stored in the file." << std::endl;
+                    //std::cout << "Value has been stored in the file." << std::endl;
                 }
             }
             break;
@@ -365,10 +390,17 @@ int main()
         return -1;
     }
 
-    Menu menu(pi);
+
+    
+    Display display(pi);
+    
+    Menu menu(pi, display);
+    
 
     while (true)
     {
+        //std::cout << "A" << std::endl;
+        //display.print(LCD_LINE_1, menu.toPrint.c_str());
         time_sleep(0.01); // Delay to reduce CPU usage
     }
 
