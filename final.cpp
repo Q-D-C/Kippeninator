@@ -392,125 +392,6 @@ public:
     }
 };
 
-class Motor
-{
-public:
-    Motor(int pigpio_instance);
-    ~Motor();
-
-    void setStep(int out1, int out2, int out3, int out4);
-    void rotateClockwise();        // void forward(double delay, int steps);
-    void rotateCounterClockwise(); // void backwards(double delay, int steps);
-    void startMotorEveryXMinutes();
-    void startMotorEveryXHours();
-
-private:
-    int pi;
-    static const int Seq[][4];
-    double turnedAt;
-    double currentTime;
-};
-
-const int Motor::Seq[][4] = {
-    {0, 1, 0, 0},
-    {0, 1, 0, 1},
-    {0, 0, 0, 1},
-    {1, 0, 0, 1},
-    {1, 0, 0, 0},
-    {1, 0, 1, 0},
-    {0, 0, 1, 0},
-    {0, 1, 1, 0}};
-
-Motor::Motor(int pigpio_instance)
-    : pi(pigpio_instance)
-{
-    set_mode(pi, MOTOR_PIN1, PI_OUTPUT);
-    set_mode(pi, MOTOR_PIN2, PI_OUTPUT);
-    set_mode(pi, MOTOR_PIN3, PI_OUTPUT);
-    set_mode(pi, MOTOR_PIN4, PI_OUTPUT);
-}
-
-Motor::~Motor()
-{
-    //
-}
-
-void Motor::setStep(int out1, int out2, int out3, int out4)
-{
-    gpio_write(pi, MOTOR_PIN2, out1);
-    gpio_write(pi, MOTOR_PIN4, out2);
-    gpio_write(pi, MOTOR_PIN3, out3);
-    gpio_write(pi, MOTOR_PIN1, out4);
-}
-
-void Motor::rotateClockwise()
-{ // forward
-    if (printStuffVraagteken)
-    {
-        std::cerr << "ROTATING" << std::endl;
-    }
-    for (int i = 0; i < MOTOR_STEPS; ++i)
-    {
-        for (int j = 0; j < 8; ++j)
-        {
-            setStep(Seq[j][0], Seq[j][1], Seq[j][2], Seq[j][3]);
-            time_sleep(MOTOR_DELAY / 1000.0);
-        }
-    }
-}
-
-void Motor::rotateCounterClockwise()
-{ // backward
-    for (int i = 0; i < MOTOR_STEPS; ++i)
-    {
-        for (int j = 7; j >= 0; --j)
-        {
-            setStep(Seq[j][0], Seq[j][1], Seq[j][2], Seq[j][3]);
-            time_sleep(MOTOR_DELAY / 1000.0);
-        }
-    }
-}
-
-void Motor::startMotorEveryXMinutes()
-{
-    time_t now = time(0);
-    tm *ltm = localtime(&now);
-
-    currentTime = ltm->tm_min;
-    turnedAt;
-
-    if (ltm->tm_min % 2 == TURNHOWMANYTIMES && currentTime != turnedAt)
-    {
-        if (printTurning)
-        {
-            std::cout << "eggos gedraaid om: " << asctime(ltm);
-	}
-	turnedAt = currentTime;
-        rotateClockwise();
-    }
-}
-
-void Motor::startMotorEveryXHours()
-{
-    time_t now = time(0);
-    tm *ltm = localtime(&now);
-
-    currentTime = ltm->tm_hour;
-    turnedAt;
-
-    if (ltm->tm_hour % TURNHOWMANYTIMES == 0 && currentTime != turnedAt)
-    {
-        if (printTurning)
-        {
-            std::cout << "eggos gedraaid om: " << asctime(ltm);
-            {
-                turnedAt = currentTime;
-                rotateClockwise();
-            }
-        }
-    }
-}
-
 class Display
 {
 public:
@@ -568,7 +449,7 @@ void Display::init()
 
 void Display::print(const int row, const char *line)
 {
-    byte(0x01, LCD_CMD);
+
     // Send some text to the display
     byte(row, LCD_CMD);
     string(line);
@@ -628,10 +509,6 @@ void Display::string(const char *message)
     {
         byte(static_cast<int>(paddedMessage[i]), LCD_CHR);
     }
-
-    // for (size_t i = 0; i < strlen(message); ++i) {
-    //     byte(static_cast<int>(message[i]), LCD_CHR);
-    // }
 }
 
 class Menu
@@ -648,7 +525,7 @@ private:
     Display &display;
 
     int Menustate = 0;
-    int Daycounter = 19;
+    //int Daycounter = 19;
     float TemperatureValue = 37.5;
     float HumidityValue = 65.0;
 
@@ -658,6 +535,8 @@ private:
     
 
 public:
+
+    int Daycounter = 19;
 
     std::string toPrint;
     
@@ -862,6 +741,129 @@ public:
 
 Menu *Menu::menuInstance = nullptr;
 
+class Motor
+{
+public:
+    Motor(int pigpio_instance, Menu &menuobject);
+    ~Motor();
+
+    void setStep(int out1, int out2, int out3, int out4);
+    void rotateClockwise();        // void forward(double delay, int steps);
+    void rotateCounterClockwise(); // void backwards(double delay, int steps);
+    void startMotorEveryXMinutes();
+    void startMotorEveryXHours();
+
+private:
+    int pi;
+    static const int Seq[][4];
+    double turnedAt;
+    double currentTime;
+    Menu &menu;
+};
+
+const int Motor::Seq[][4] = {
+    {0, 1, 0, 0},
+    {0, 1, 0, 1},
+    {0, 0, 0, 1},
+    {1, 0, 0, 1},
+    {1, 0, 0, 0},
+    {1, 0, 1, 0},
+    {0, 0, 1, 0},
+    {0, 1, 1, 0}};
+
+Motor::Motor(int pigpio_instance, Menu &menuobject) : pi(pigpio_instance), menu(menuobject)
+{
+	
+    set_mode(pi, MOTOR_PIN1, PI_OUTPUT);
+    set_mode(pi, MOTOR_PIN2, PI_OUTPUT);
+    set_mode(pi, MOTOR_PIN3, PI_OUTPUT);
+    set_mode(pi, MOTOR_PIN4, PI_OUTPUT);
+}
+
+Motor::~Motor()
+{
+    //
+}
+
+void Motor::setStep(int out1, int out2, int out3, int out4)
+{
+    gpio_write(pi, MOTOR_PIN2, out1);
+    gpio_write(pi, MOTOR_PIN4, out2);
+    gpio_write(pi, MOTOR_PIN3, out3);
+    gpio_write(pi, MOTOR_PIN1, out4);
+}
+
+void Motor::rotateClockwise()
+{ // forward
+    if (menu.Daycounter > 0)
+    {
+       std::cerr << "ROTATING" << std::endl;
+       for (int i = 0; i < MOTOR_STEPS; ++i)
+		{
+			for (int j = 0; j < 8; ++j)
+			{
+				setStep(Seq[j][0], Seq[j][1], Seq[j][2], Seq[j][3]);
+				time_sleep(MOTOR_DELAY / 1000.0);
+			}
+		} 
+    }
+    
+}
+
+void Motor::rotateCounterClockwise()
+{ // backward
+    for (int i = 0; i < MOTOR_STEPS; ++i)
+    {
+        for (int j = 7; j >= 0; --j)
+        {
+            setStep(Seq[j][0], Seq[j][1], Seq[j][2], Seq[j][3]);
+            time_sleep(MOTOR_DELAY / 1000.0);
+        }
+    }
+}
+
+void Motor::startMotorEveryXMinutes()
+{
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+
+    currentTime = ltm->tm_min;
+    turnedAt;
+
+    if (ltm->tm_min % 2 == TURNHOWMANYTIMES && currentTime != turnedAt)
+    {
+        if (printTurning)
+        {
+            std::cout << "eggos gedraaid om: " << asctime(ltm);
+		}
+		turnedAt = currentTime;
+        rotateClockwise();
+    }
+}
+
+void Motor::startMotorEveryXHours()
+{
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+
+    currentTime = ltm->tm_hour;
+    turnedAt;
+
+    if (ltm->tm_hour % TURNHOWMANYTIMES == 0 && currentTime != turnedAt)
+    {
+        if (printTurning)
+        {
+            std::cout << "eggos gedraaid om: " << asctime(ltm);
+            {
+                turnedAt = currentTime;
+                rotateClockwise();
+            }
+        }
+    }
+}
+
+
+
 int main()
 {
     // initialize GPIO
@@ -881,12 +883,12 @@ int main()
     Heating heater(pi);
 
     PID magic;
-
-    Motor motor(pi);
     
     Display display(pi);
     
     Menu menu(pi, display);
+    
+    Motor motor(pi, menu);
     
     while (true)
     {
@@ -898,11 +900,11 @@ int main()
         heater.controlTemperaturePWM(magic.calculatePID(sensor.temperatureCelsius));
 
         // Insert data into MySQL database
-//        databaseConnection.insertSensorData(sensor.humidityPercentage, sensor.temperatureCelsius, magic.pVal, magic.iVal, magic.dVal, magic.output, heater.power);
+        databaseConnection.insertSensorData(sensor.humidityPercentage, sensor.temperatureCelsius, magic.pVal, magic.iVal, magic.dVal, magic.output, heater.power);
 
         // check if the "eggos" need to be turned
-        //motor.startMotorEveryXMinutes();
-motor.rotateClockwise();
+        motor.startMotorEveryXMinutes();
+        
         sleep(sleeptime); // Wait before reading again
     }
 
